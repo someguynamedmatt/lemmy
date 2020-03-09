@@ -9,10 +9,11 @@ services:
     volumes:
       - ./lemmy.hjson:/config/config.hjson:ro
     depends_on:
-      - lemmy_db
-      - lemmy_pictshare
+      - postgres
+      - pictshare
+      - iframely
 
-  lemmy_db:
+  postgres:
     image: postgres:12-alpine
     environment:
       - POSTGRES_USER=lemmy
@@ -22,7 +23,7 @@ services:
       - ./volumes/postgres:/var/lib/postgresql/data
     restart: always
 
-  lemmy_pictshare:
+  pictshare:
     image: shtripok/pictshare:latest
     ports:
       - "127.0.0.1:8537:80"
@@ -30,10 +31,10 @@ services:
       - ./volumes/pictshare:/usr/share/nginx/html/data
     restart: always
 
-  lemmy_iframely:
+  iframely:
     image: dogbin/iframely:latest
     ports:
-      - "127.0.0.1:8061:8061"
+      - "127.0.0.1:8061:80"
     volumes:
       - ./iframely.config.local.js:/iframely/config.local.js:ro
     restart: always
