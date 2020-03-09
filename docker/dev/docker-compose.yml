@@ -8,7 +8,7 @@ services:
       - POSTGRES_PASSWORD=password
       - POSTGRES_DB=lemmy
     volumes:
-      - lemmy_db:/var/lib/postgresql/data
+      - ./volumes/postgres:/var/lib/postgresql/data
     restart: always
   lemmy:
     build: 
@@ -26,7 +26,7 @@ services:
     ports:
       - "127.0.0.1:8537:80"
     volumes:
-      - lemmy_pictshare:/usr/share/nginx/html/data
+      - ./volumes/pictshare:/usr/share/nginx/html/data
     restart: always
   lemmy_iframely:
     image: dogbin/iframely:latest
