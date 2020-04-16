@@ -1,11 +1,9 @@
 use crate::db::site_view::SiteView;
 use crate::version;
-use crate::Settings;
+use crate::websocket::server::ChatSharedState;
 use actix_web::body::Body;
 use actix_web::web;
 use actix_web::HttpResponse;
-use diesel::r2d2::{ConnectionManager, Pool};
-use diesel::PgConnection;
 use serde::Serialize;
 
 pub fn config(cfg: &mut web::ServiceConfig) {
@@ -14,26 +12,29 @@ pub fn config(cfg: &mut web::ServiceConfig) {
     .route("/.well-known/nodeinfo", web::get().to(node_info_well_known));
 }
 
-async fn node_info_well_known() -> HttpResponse<Body> {
+async fn node_info_well_known(
+  state: web::Data<ChatSharedState>,
+) -> HttpResponse<Body> {
   let node_info = NodeInfoWellKnown {
     links: NodeInfoWellKnownLinks {
       rel: "http://nodeinfo.diaspora.software/ns/schema/2.0".to_string(),
-      href: format!("https://{}/nodeinfo/2.0.json", Settings::get().hostname),
+      href: format!("https://{}/nodeinfo/2.0.json", state.settings.lock().unwrap().hostname),
     },
   };
   HttpResponse::Ok().json(node_info)
 }
 
 async fn node_info(
-  db: web::Data<Pool<ConnectionManager<PgConnection>>>,
+  state: web::Data<ChatSharedState>,
 ) -> Result<HttpResponse, actix_web::Error> {
   let res = web::block(move || {
-    let conn = db.get()?;
+
+    let conn = state.pool.lock().unwrap().get()?;
     let site_view = match SiteView::read(&conn) {
       Ok(site_view) => site_view,
       Err(_) => return Err(format_err!("not_found")),
     };
-    let protocols = if Settings::get().federation_enabled {
+    let protocols = if state.settings.lock().unwrap().federation_enabled {
       vec!["activitypub".to_string()]
     } else {
       vec![]

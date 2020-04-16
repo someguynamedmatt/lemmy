@@ -65,17 +65,21 @@ pub struct GetCommentsResponse {
 }
 
 impl Perform<CommentResponse> for Oper<CreateComment> {
-  fn perform(&self, conn: &PgConnection) -> Result<CommentResponse, Error> {
+  fn perform(
+    &self, 
+    conn: &PgConnection,
+    settings: &Settings,
+  ) -> Result<CommentResponse, Error> {
     let data: &CreateComment = &self.data;
 
-    let claims = match Claims::decode(&data.auth) {
+    let claims = match Claims::decode(&data.auth, &settings.jwt_secret) {
       Ok(claims) => claims.claims,
       Err(_e) => return Err(APIError::err("not_logged_in").into()),
     };
 
     let user_id = claims.id;
 
-    let hostname = &format!("https://{}", Settings::get().hostname);
+    let hostname = &format!("https://{}", settings.hostname);
 
     // Check for a community ban
     let post = Post::read(&conn, data.post_id)?;
@@ -137,14 +141,14 @@ impl Perform<CommentResponse> for Oper<CreateComment> {
             if let Some(mention_email) = mention_user.email {
               let subject = &format!(
                 "{} - Mentioned by {}",
-                Settings::get().hostname,
+                settings.hostname,
                 claims.username
               );
               let html = &format!(
                 "<h1>User Mention</h1><br><div>{} - {}</div><br><a href={}/inbox>inbox</a>",
                 claims.username, comment_form.content, hostname
               );
-              match send_email(subject, &mention_email, &mention_user.name, html) {
+              match send_email(subject, &mention_email, &mention_user.name, html, settings) {
                 Ok(_o) => _o,
                 Err(e) => error!("{}", e),
               };
@@ -166,14 +170,14 @@ impl Perform<CommentResponse> for Oper<CreateComment> {
             if let Some(comment_reply_email) = parent_user.email {
               let subject = &format!(
                 "{} - Reply from {}",
-                Settings::get().hostname,
+                settings.hostname,
                 claims.username
               );
               let html = &format!(
                 "<h1>Comment Reply</h1><br><div>{} - {}</div><br><a href={}/inbox>inbox</a>",
                 claims.username, comment_form.content, hostname
               );
-              match send_email(subject, &comment_reply_email, &parent_user.name, html) {
+              match send_email(subject, &comment_reply_email, &parent_user.name, html, settings) {
                 Ok(_o) => _o,
                 Err(e) => error!("{}", e),
               };
@@ -191,14 +195,14 @@ impl Perform<CommentResponse> for Oper<CreateComment> {
             if let Some(post_reply_email) = parent_user.email {
               let subject = &format!(
                 "{} - Reply from {}",
-                Settings::get().hostname,
+                settings.hostname,
                 claims.username
               );
               let html = &format!(
                 "<h1>Post Reply</h1><br><div>{} - {}</div><br><a href={}/inbox>inbox</a>",
                 claims.username, comment_form.content, hostname
               );
-              match send_email(subject, &post_reply_email, &parent_user.name, html) {
+              match send_email(subject, &post_reply_email, &parent_user.name, html, settings) {
                 Ok(_o) => _o,
                 Err(e) => error!("{}", e),
               };
@@ -231,10 +235,14 @@ impl Perform<CommentResponse> for Oper<CreateComment> {
 }
 
 impl Perform<CommentResponse> for Oper<EditComment> {
-  fn perform(&self, conn: &PgConnection) -> Result<CommentResponse, Error> {
+  fn perform(
+    &self, 
+    conn: &PgConnection,
+    settings: &Settings,
+    ) -> Result<CommentResponse, Error> {
     let data: &EditComment = &self.data;
 
-    let claims = match Claims::decode(&data.auth) {
+    let claims = match Claims::decode(&data.auth, &settings.jwt_secret) {
       Ok(claims) => claims.claims,
       Err(_e) => return Err(APIError::err("not_logged_in").into()),
     };
@@ -361,10 +369,14 @@ impl Perform<CommentResponse> for Oper<EditComment> {
 }
 
 impl Perform<CommentResponse> for Oper<SaveComment> {
-  fn perform(&self, conn: &PgConnection) -> Result<CommentResponse, Error> {
+  fn perform(
+    &self, 
+    conn: &PgConnection,
+    settings: &Settings,
+    ) -> Result<CommentResponse, Error> {
     let data: &SaveComment = &self.data;
 
-    let claims = match Claims::decode(&data.auth) {
+    let claims = match Claims::decode(&data.auth, &settings.jwt_secret) {
       Ok(claims) => claims.claims,
       Err(_e) => return Err(APIError::err("not_logged_in").into()),
     };
@@ -398,10 +410,14 @@ impl Perform<CommentResponse> for Oper<SaveComment> {
 }
 
 impl Perform<CommentResponse> for Oper<CreateCommentLike> {
-  fn perform(&self, conn: &PgConnection) -> Result<CommentResponse, Error> {
+  fn perform(
+    &self, 
+    conn: &PgConnection,
+    settings: &Settings,
+    ) -> Result<CommentResponse, Error> {
     let data: &CreateCommentLike = &self.data;
 
-    let claims = match Claims::decode(&data.auth) {
+    let claims = match Claims::decode(&data.auth, &settings.jwt_secret) {
       Ok(claims) => claims.claims,
       Err(_e) => return Err(APIError::err("not_logged_in").into()),
     };
@@ -475,11 +491,15 @@ impl Perform<CommentResponse> for Oper<CreateCommentLike> {
 }
 
 impl Perform<GetCommentsResponse> for Oper<GetComments> {
-  fn perform(&self, conn: &PgConnection) -> Result<GetCommentsResponse, Error> {
+  fn perform(   
+    &self, 
+    conn: &PgConnection,
+    settings: &Settings,
+  ) -> Result<GetCommentsResponse, Error> {
     let data: &GetComments = &self.data;
 
     let user_claims: Option<Claims> = match &data.auth {
-      Some(auth) => match Claims::decode(&auth) {
+      Some(auth) => match Claims::decode(&auth, &settings.jwt_secret) {
         Ok(claims) => Some(claims.claims),
         Err(_e) => None,
       },

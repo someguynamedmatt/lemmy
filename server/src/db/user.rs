@@ -110,14 +110,14 @@ pub struct Claims {
 }
 
 impl Claims {
-  pub fn decode(jwt: &str) -> Result<TokenData<Claims>, jsonwebtoken::errors::Error> {
+  pub fn decode(jwt: &str, jwt_secret: &str) -> Result<TokenData<Claims>, jsonwebtoken::errors::Error> {
     let v = Validation {
       validate_exp: false,
       ..Validation::default()
     };
     decode::<Claims>(
       &jwt,
-      &DecodingKey::from_secret(Settings::get().jwt_secret.as_ref()),
+      &DecodingKey::from_secret(jwt_secret.as_bytes()),
       &v,
     )
   }
@@ -125,7 +125,7 @@ impl Claims {
 
 type Jwt = String;
 impl User_ {
-  pub fn jwt(&self) -> Jwt {
+  pub fn jwt(&self, jwt_secret: &str) -> Jwt {
     let my_claims = Claims {
       id: self.id,
       username: self.name.to_owned(),
@@ -141,7 +141,7 @@ impl User_ {
     encode(
       &Header::default(),
       &my_claims,
-      &EncodingKey::from_secret(Settings::get().jwt_secret.as_ref()),
+      &EncodingKey::from_secret(jwt_secret.as_bytes()),
     )
     .unwrap()
   }
@@ -165,12 +165,12 @@ impl User_ {
     }
   }
 
-  pub fn get_profile_url(&self) -> String {
-    format!("https://{}/u/{}", Settings::get().hostname, self.name)
+  pub fn get_profile_url(&self, hostname: &str) -> String {
+    format!("https://{}/u/{}", hostname, self.name)
   }
 
-  pub fn find_by_jwt(conn: &PgConnection, jwt: &str) -> Result<Self, Error> {
-    let claims: Claims = Claims::decode(&jwt).expect("Invalid token").claims;
+  pub fn find_by_jwt(conn: &PgConnection, jwt: &str, jwt_secret: &str) -> Result<Self, Error> {
+    let claims: Claims = Claims::decode(jwt, jwt_secret).expect("Invalid token").claims;
     Self::read(&conn, claims.id)
   }
 }

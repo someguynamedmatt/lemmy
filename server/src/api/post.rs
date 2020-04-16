@@ -80,10 +80,14 @@ pub struct SavePost {
 }
 
 impl Perform<PostResponse> for Oper<CreatePost> {
-  fn perform(&self, conn: &PgConnection) -> Result<PostResponse, Error> {
+  fn perform(
+    &self, 
+    conn: &PgConnection,
+    settings: &Settings,
+  ) -> Result<PostResponse, Error> {
     let data: &CreatePost = &self.data;
 
-    let claims = match Claims::decode(&data.auth) {
+    let claims = match Claims::decode(&data.auth, &settings.jwt_secret) {
       Ok(claims) => claims.claims,
       Err(_e) => return Err(APIError::err("not_logged_in").into()),
     };
@@ -169,11 +173,15 @@ impl Perform<PostResponse> for Oper<CreatePost> {
 }
 
 impl Perform<GetPostResponse> for Oper<GetPost> {
-  fn perform(&self, conn: &PgConnection) -> Result<GetPostResponse, Error> {
+  fn perform(
+    &self, 
+    conn: &PgConnection,
+    settings: &Settings,
+  ) -> Result<GetPostResponse, Error> {
     let data: &GetPost = &self.data;
 
     let user_id: Option<i32> = match &data.auth {
-      Some(auth) => match Claims::decode(&auth) {
+      Some(auth) => match Claims::decode(&auth, &settings.jwt_secret) {
         Ok(claims) => {
           let user_id = claims.claims.id;
           Some(user_id)
@@ -217,11 +225,15 @@ impl Perform<GetPostResponse> for Oper<GetPost> {
 }
 
 impl Perform<GetPostsResponse> for Oper<GetPosts> {
-  fn perform(&self, conn: &PgConnection) -> Result<GetPostsResponse, Error> {
+  fn perform(
+    &self, 
+    conn: &PgConnection,
+    settings: &Settings,
+  ) -> Result<GetPostsResponse, Error> {
     let data: &GetPosts = &self.data;
 
     let user_claims: Option<Claims> = match &data.auth {
-      Some(auth) => match Claims::decode(&auth) {
+      Some(auth) => match Claims::decode(&auth, &settings.jwt_secret) {
         Ok(claims) => Some(claims.claims),
         Err(_e) => None,
       },
@@ -260,10 +272,14 @@ impl Perform<GetPostsResponse> for Oper<GetPosts> {
 }
 
 impl Perform<PostResponse> for Oper<CreatePostLike> {
-  fn perform(&self, conn: &PgConnection) -> Result<PostResponse, Error> {
+  fn perform(
+    &self, 
+    conn: &PgConnection,
+    settings: &Settings,
+  ) -> Result<PostResponse, Error> {
     let data: &CreatePostLike = &self.data;
 
-    let claims = match Claims::decode(&data.auth) {
+    let claims = match Claims::decode(&data.auth, &settings.jwt_secret) {
       Ok(claims) => claims.claims,
       Err(_e) => return Err(APIError::err("not_logged_in").into()),
     };
@@ -318,7 +334,11 @@ impl Perform<PostResponse> for Oper<CreatePostLike> {
 }
 
 impl Perform<PostResponse> for Oper<EditPost> {
-  fn perform(&self, conn: &PgConnection) -> Result<PostResponse, Error> {
+  fn perform(
+    &self, 
+    conn: &PgConnection,
+    settings: &Settings,
+  ) -> Result<PostResponse, Error> {
     let data: &EditPost = &self.data;
 
     if let Err(slurs) = slur_check(&data.name) {
@@ -331,7 +351,7 @@ impl Perform<PostResponse> for Oper<EditPost> {
       }
     }
 
-    let claims = match Claims::decode(&data.auth) {
+    let claims = match Claims::decode(&data.auth, &settings.jwt_secret) {
       Ok(claims) => claims.claims,
       Err(_e) => return Err(APIError::err("not_logged_in").into()),
     };
@@ -432,10 +452,14 @@ impl Perform<PostResponse> for Oper<EditPost> {
 }
 
 impl Perform<PostResponse> for Oper<SavePost> {
-  fn perform(&self, conn: &PgConnection) -> Result<PostResponse, Error> {
+  fn perform(
+    &self, 
+    conn: &PgConnection,
+    settings: &Settings,
+  ) -> Result<PostResponse, Error> {
     let data: &SavePost = &self.data;
 
-    let claims = match Claims::decode(&data.auth) {
+    let claims = match Claims::decode(&data.auth, &settings.jwt_secret) {
       Ok(claims) => claims.claims,
       Err(_e) => return Err(APIError::err("not_logged_in").into()),
     };

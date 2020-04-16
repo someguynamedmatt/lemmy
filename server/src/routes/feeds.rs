@@ -6,10 +6,10 @@ use crate::db::site_view::SiteView;
 use crate::db::user::{Claims, User_};
 use crate::db::user_mention_view::{UserMentionQueryBuilder, UserMentionView};
 use crate::db::{ListingType, SortType};
-use crate::{markdown_to_html, Settings};
+use crate::websocket::server::ChatSharedState;
+use crate::markdown_to_html;
 use actix_web::{web, HttpResponse, Result};
 use chrono::{DateTime, NaiveDateTime, Utc};
-use diesel::r2d2::{ConnectionManager, Pool};
 use diesel::PgConnection;
 use failure::Error;
 use rss::{CategoryBuilder, ChannelBuilder, GuidBuilder, Item, ItemBuilder};
@@ -37,11 +37,12 @@ pub fn config(cfg: &mut web::ServiceConfig) {
 
 async fn get_all_feed(
   info: web::Query<Params>,
-  db: web::Data<Pool<ConnectionManager<PgConnection>>>,
+  state: web::Data<ChatSharedState>,
 ) -> Result<HttpResponse, actix_web::Error> {
   let res = web::block(move || {
-    let conn = db.get()?;
-    get_feed_all_data(&conn, &get_sort_type(info)?)
+    let conn = state.pool.lock().unwrap().get()?;
+    let hostname = &state.settings.lock().unwrap().hostname;
+    get_feed_all_data(&conn, &hostname, &get_sort_type(info)?)
   })
   .await
   .map(|rss| {
@@ -53,7 +54,7 @@ async fn get_all_feed(
   Ok(res)
 }
 
-fn get_feed_all_data(conn: &PgConnection, sort_type: &SortType) -> Result<String, failure::Error> {
+fn get_feed_all_data(conn: &PgConnection, hostname: &str, sort_type: &SortType) -> Result<String, failure::Error> {
   let site_view = SiteView::read(&conn)?;
 
   let posts = PostQueryBuilder::create(&conn)
@@ -61,12 +62,12 @@ fn get_feed_all_data(conn: &PgConnection, sort_type: &SortType) -> Result<String
     .sort(sort_type)
     .list()?;
 
-  let items = create_post_items(posts);
+  let items = create_post_items(posts, hostname);
 
   let mut channel_builder = ChannelBuilder::default();
   channel_builder
     .title(&format!("{} - All", site_view.name))
-    .link(format!("https://{}", Settings::get().hostname))
+    .link(format!("https://{}", hostname))
     .items(items);
 
   if let Some(site_desc) = site_view.description {
@@ -79,10 +80,12 @@ fn get_feed_all_data(conn: &PgConnection, sort_type: &SortType) -> Result<String
 async fn get_feed(
   path: web::Path<(String, String)>,
   info: web::Query<Params>,
-  db: web::Data<Pool<ConnectionManager<PgConnection>>>,
+  state: web::Data<ChatSharedState>,
 ) -> Result<HttpResponse, actix_web::Error> {
   let res = web::block(move || {
-    let conn = db.get()?;
+    let conn = state.pool.lock().unwrap().get()?;
+    let hostname = &state.settings.lock().unwrap().hostname;
+    let jwt_secret = &state.settings.lock().unwrap().jwt_secret;
 
     let sort_type = get_sort_type(info)?;
 
@@ -97,10 +100,10 @@ async fn get_feed(
     let param = path.1.to_owned();
 
     match request_type {
-      RequestType::User => get_feed_user(&conn, &sort_type, param),
-      RequestType::Community => get_feed_community(&conn, &sort_type, param),
-      RequestType::Front => get_feed_front(&conn, &sort_type, param),
-      RequestType::Inbox => get_feed_inbox(&conn, param),
+      RequestType::User => get_feed_user(&conn, &hostname, &sort_type, param),
+      RequestType::Community => get_feed_community(&conn, &hostname, &sort_type, param),
+      RequestType::Front => get_feed_front(&conn, &hostname, &jwt_secret, &sort_type, param),
+      RequestType::Inbox => get_feed_inbox(&conn, &hostname, &jwt_secret, param),
     }
   })
   .await
@@ -124,12 +127,13 @@ fn get_sort_type(info: web::Query<Params>) -> Result<SortType, ParseError> {
 
 fn get_feed_user(
   conn: &PgConnection,
+  hostname: &str,
   sort_type: &SortType,
   user_name: String,
 ) -> Result<ChannelBuilder, Error> {
   let site_view = SiteView::read(&conn)?;
   let user = User_::find_by_username(&conn, &user_name)?;
-  let user_url = user.get_profile_url();
+  let user_url = user.get_profile_url(hostname);
 
   let posts = PostQueryBuilder::create(&conn)
     .listing_type(ListingType::All)
@@ -137,7 +141,7 @@ fn get_feed_user(
     .for_creator_id(user.id)
     .list()?;
 
-  let items = create_post_items(posts);
+  let items = create_post_items(posts, hostname);
 
   let mut channel_builder = ChannelBuilder::default();
   channel_builder
@@ -150,12 +154,13 @@ fn get_feed_user(
 
 fn get_feed_community(
   conn: &PgConnection,
+  hostname: &str,
   sort_type: &SortType,
   community_name: String,
 ) -> Result<ChannelBuilder, Error> {
   let site_view = SiteView::read(&conn)?;
   let community = Community::read_from_name(&conn, community_name)?;
-  let community_url = community.get_url();
+  let community_url = community.get_url(hostname);
 
   let posts = PostQueryBuilder::create(&conn)
     .listing_type(ListingType::All)
@@ -163,7 +168,7 @@ fn get_feed_community(
     .for_community_id(community.id)
     .list()?;
 
-  let items = create_post_items(posts);
+  let items = create_post_items(posts, hostname);
 
   let mut channel_builder = ChannelBuilder::default();
   channel_builder
@@ -180,11 +185,13 @@ fn get_feed_community(
 
 fn get_feed_front(
   conn: &PgConnection,
+  hostname: &str,
+  jwt_secret: &str,
   sort_type: &SortType,
   jwt: String,
 ) -> Result<ChannelBuilder, Error> {
   let site_view = SiteView::read(&conn)?;
-  let user_id = Claims::decode(&jwt)?.claims.id;
+  let user_id = Claims::decode(&jwt, jwt_secret)?.claims.id;
 
   let posts = PostQueryBuilder::create(&conn)
     .listing_type(ListingType::Subscribed)
@@ -192,12 +199,12 @@ fn get_feed_front(
     .my_user_id(user_id)
     .list()?;
 
-  let items = create_post_items(posts);
+  let items = create_post_items(posts, hostname);
 
   let mut channel_builder = ChannelBuilder::default();
   channel_builder
     .title(&format!("{} - Subscribed", site_view.name))
-    .link(format!("https://{}", Settings::get().hostname))
+    .link(format!("https://{}", hostname))
     .items(items);
 
   if let Some(site_desc) = site_view.description {
@@ -207,9 +214,13 @@ fn get_feed_front(
   Ok(channel_builder)
 }
 
-fn get_feed_inbox(conn: &PgConnection, jwt: String) -> Result<ChannelBuilder, Error> {
+fn get_feed_inbox(
+  conn: &PgConnection, 
+  hostname: &str, 
+  jwt_secret: &str,
+  jwt: String) -> Result<ChannelBuilder, Error> {
   let site_view = SiteView::read(&conn)?;
-  let user_id = Claims::decode(&jwt)?.claims.id;
+  let user_id = Claims::decode(&jwt, jwt_secret)?.claims.id;
 
   let sort = SortType::New;
 
@@ -221,12 +232,12 @@ fn get_feed_inbox(conn: &PgConnection, jwt: String) -> Result<ChannelBuilder, Er
     .sort(&sort)
     .list()?;
 
-  let items = create_reply_and_mention_items(replies, mentions);
+  let items = create_reply_and_mention_items(replies, mentions, hostname);
 
   let mut channel_builder = ChannelBuilder::default();
   channel_builder
     .title(&format!("{} - Inbox", site_view.name))
-    .link(format!("https://{}/inbox", Settings::get().hostname))
+    .link(format!("https://{}/inbox", hostname))
     .items(items);
 
   if let Some(site_desc) = site_view.description {
@@ -239,17 +250,18 @@ fn get_feed_inbox(conn: &PgConnection, jwt: String) -> Result<ChannelBuilder, Er
 fn create_reply_and_mention_items(
   replies: Vec<ReplyView>,
   mentions: Vec<UserMentionView>,
+  hostname: &str,
 ) -> Vec<Item> {
   let mut reply_items: Vec<Item> = replies
     .iter()
     .map(|r| {
       let reply_url = format!(
         "https://{}/post/{}/comment/{}",
-        Settings::get().hostname,
+        hostname,
         r.post_id,
         r.id
       );
-      build_item(&r.creator_name, &r.published, &reply_url, &r.content)
+      build_item(&r.creator_name, &r.published, &reply_url, &r.content, hostname)
     })
     .collect();
 
@@ -258,11 +270,11 @@ fn create_reply_and_mention_items(
     .map(|m| {
       let mention_url = format!(
         "https://{}/post/{}/comment/{}",
-        Settings::get().hostname,
+        hostname,
         m.post_id,
         m.id
       );
-      build_item(&m.creator_name, &m.published, &mention_url, &m.content)
+      build_item(&m.creator_name, &m.published, &mention_url, &m.content, hostname)
     })
     .collect();
 
@@ -270,10 +282,10 @@ fn create_reply_and_mention_items(
   reply_items
 }
 
-fn build_item(creator_name: &str, published: &NaiveDateTime, url: &str, content: &str) -> Item {
+fn build_item(creator_name: &str, published: &NaiveDateTime, url: &str, content: &str, hostname: &str) -> Item {
   let mut i = ItemBuilder::default();
   i.title(format!("Reply from {}", creator_name));
-  let author_url = format!("https://{}/u/{}", Settings::get().hostname, creator_name);
+  let author_url = format!("https://{}/u/{}", hostname, creator_name);
   i.author(format!(
     "/u/{} <a href=\"{}\">(link)</a>",
     creator_name, author_url
@@ -290,7 +302,7 @@ fn build_item(creator_name: &str, published: &NaiveDateTime, url: &str, content:
   i.build().unwrap()
 }
 
-fn create_post_items(posts: Vec<PostView>) -> Vec<Item> {
+fn create_post_items(posts: Vec<PostView>, hostname: &str) -> Vec<Item> {
   let mut items: Vec<Item> = Vec::new();
 
   for p in posts {
@@ -298,7 +310,7 @@ fn create_post_items(posts: Vec<PostView>) -> Vec<Item> {
 
     i.title(p.name);
 
-    let author_url = format!("https://{}/u/{}", Settings::get().hostname, p.creator_name);
+    let author_url = format!("https://{}/u/{}", hostname, p.creator_name);
     i.author(format!(
       "/u/{} <a href=\"{}\">(link)</a>",
       p.creator_name, author_url
@@ -307,7 +319,7 @@ fn create_post_items(posts: Vec<PostView>) -> Vec<Item> {
     let dt = DateTime::<Utc>::from_utc(p.published, Utc);
     i.pub_date(dt.to_rfc2822());
 
-    let post_url = format!("https://{}/post/{}", Settings::get().hostname, p.id);
+    let post_url = format!("https://{}/post/{}", hostname, p.id);
     i.comments(post_url.to_owned());
     let guid = GuidBuilder::default()
       .permalink(true)
@@ -317,7 +329,7 @@ fn create_post_items(posts: Vec<PostView>) -> Vec<Item> {
 
     let community_url = format!(
       "https://{}/c/{}",
-      Settings::get().hostname,
+      hostname,
       p.community_name
     );
 
@@ -326,7 +338,7 @@ fn create_post_items(posts: Vec<PostView>) -> Vec<Item> {
         "/c/{} <a href=\"{}\">(link)</a>",
         p.community_name, community_url
       ))
-      .domain(Settings::get().hostname.to_owned())
+      .domain(hostname.to_string())
       .build();
     i.categories(vec![category.unwrap()]);
 

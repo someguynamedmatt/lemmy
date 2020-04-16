@@ -17,6 +17,7 @@ use crate::db::user_mention::*;
 use crate::db::user_mention_view::*;
 use crate::db::user_view::*;
 use crate::db::*;
+use crate::Settings;
 use crate::{
   extract_usernames, fetch_iframely_and_pictshare_data, naive_from_unix, naive_now, remove_slurs,
   slur_check, slurs_vec_to_str,
@@ -56,7 +57,7 @@ impl<T> Oper<T> {
 }
 
 pub trait Perform<T> {
-  fn perform(&self, conn: &PgConnection) -> Result<T, Error>
+  fn perform(&self, conn: &PgConnection, settings: &Settings) -> Result<T, Error>
   where
     T: Sized;
 }

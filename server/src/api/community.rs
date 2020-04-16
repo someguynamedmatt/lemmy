@@ -114,11 +114,15 @@ pub struct TransferCommunity {
 }
 
 impl Perform<GetCommunityResponse> for Oper<GetCommunity> {
-  fn perform(&self, conn: &PgConnection) -> Result<GetCommunityResponse, Error> {
+  fn perform(   
+    &self, 
+    conn: &PgConnection,
+    settings: &Settings,
+  ) -> Result<GetCommunityResponse, Error> {
     let data: &GetCommunity = &self.data;
 
     let user_id: Option<i32> = match &data.auth {
-      Some(auth) => match Claims::decode(&auth) {
+      Some(auth) => match Claims::decode(&auth, &settings.jwt_secret) {
         Ok(claims) => {
           let user_id = claims.claims.id;
           Some(user_id)
@@ -168,10 +172,14 @@ impl Perform<GetCommunityResponse> for Oper<GetCommunity> {
 }
 
 impl Perform<CommunityResponse> for Oper<CreateCommunity> {
-  fn perform(&self, conn: &PgConnection) -> Result<CommunityResponse, Error> {
+  fn perform(   
+    &self, 
+    conn: &PgConnection,
+    settings: &Settings,
+  ) -> Result<CommunityResponse, Error> {
     let data: &CreateCommunity = &self.data;
 
-    let claims = match Claims::decode(&data.auth) {
+    let claims = match Claims::decode(&data.auth, &settings.jwt_secret) {
       Ok(claims) => claims.claims,
       Err(_e) => return Err(APIError::err("not_logged_in").into()),
     };
@@ -246,7 +254,11 @@ impl Perform<CommunityResponse> for Oper<CreateCommunity> {
 }
 
 impl Perform<CommunityResponse> for Oper<EditCommunity> {
-  fn perform(&self, conn: &PgConnection) -> Result<CommunityResponse, Error> {
+  fn perform(
+    &self, 
+    conn: &PgConnection,
+    settings: &Settings,
+  ) -> Result<CommunityResponse, Error> {
     let data: &EditCommunity = &self.data;
 
     if let Err(slurs) = slur_check(&data.name) {
@@ -263,7 +275,7 @@ impl Perform<CommunityResponse> for Oper<EditCommunity> {
       }
     }
 
-    let claims = match Claims::decode(&data.auth) {
+    let claims = match Claims::decode(&data.auth, &settings.jwt_secret) {
       Ok(claims) => claims.claims,
       Err(_e) => return Err(APIError::err("not_logged_in").into()),
     };
@@ -330,11 +342,15 @@ impl Perform<CommunityResponse> for Oper<EditCommunity> {
 }
 
 impl Perform<ListCommunitiesResponse> for Oper<ListCommunities> {
-  fn perform(&self, conn: &PgConnection) -> Result<ListCommunitiesResponse, Error> {
+  fn perform(
+    &self, 
+    conn: &PgConnection,
+    settings: &Settings,
+  ) -> Result<ListCommunitiesResponse, Error> {
     let data: &ListCommunities = &self.data;
 
     let user_claims: Option<Claims> = match &data.auth {
-      Some(auth) => match Claims::decode(&auth) {
+      Some(auth) => match Claims::decode(&auth, &settings.jwt_secret) {
         Ok(claims) => Some(claims.claims),
         Err(_e) => None,
       },
@@ -367,10 +383,14 @@ impl Perform<ListCommunitiesResponse> for Oper<ListCommunities> {
 }
 
 impl Perform<CommunityResponse> for Oper<FollowCommunity> {
-  fn perform(&self, conn: &PgConnection) -> Result<CommunityResponse, Error> {
+  fn perform(
+    &self, 
+    conn: &PgConnection,
+    settings: &Settings,
+  ) -> Result<CommunityResponse, Error> {
     let data: &FollowCommunity = &self.data;
 
-    let claims = match Claims::decode(&data.auth) {
+    let claims = match Claims::decode(&data.auth, &settings.jwt_secret) {
       Ok(claims) => claims.claims,
       Err(_e) => return Err(APIError::err("not_logged_in").into()),
     };
@@ -403,10 +423,14 @@ impl Perform<CommunityResponse> for Oper<FollowCommunity> {
 }
 
 impl Perform<GetFollowedCommunitiesResponse> for Oper<GetFollowedCommunities> {
-  fn perform(&self, conn: &PgConnection) -> Result<GetFollowedCommunitiesResponse, Error> {
+  fn perform(
+    &self, 
+    conn: &PgConnection,
+    settings: &Settings,
+  ) -> Result<GetFollowedCommunitiesResponse, Error> {
     let data: &GetFollowedCommunities = &self.data;
 
-    let claims = match Claims::decode(&data.auth) {
+    let claims = match Claims::decode(&data.auth, &settings.jwt_secret) {
       Ok(claims) => claims.claims,
       Err(_e) => return Err(APIError::err("not_logged_in").into()),
     };
@@ -425,10 +449,14 @@ impl Perform<GetFollowedCommunitiesResponse> for Oper<GetFollowedCommunities> {
 }
 
 impl Perform<BanFromCommunityResponse> for Oper<BanFromCommunity> {
-  fn perform(&self, conn: &PgConnection) -> Result<BanFromCommunityResponse, Error> {
+  fn perform(
+    &self, 
+    conn: &PgConnection,
+    settings: &Settings,
+  ) -> Result<BanFromCommunityResponse, Error> {
     let data: &BanFromCommunity = &self.data;
 
-    let claims = match Claims::decode(&data.auth) {
+    let claims = match Claims::decode(&data.auth, &settings.jwt_secret) {
       Ok(claims) => claims.claims,
       Err(_e) => return Err(APIError::err("not_logged_in").into()),
     };
@@ -478,10 +506,14 @@ impl Perform<BanFromCommunityResponse> for Oper<BanFromCommunity> {
 }
 
 impl Perform<AddModToCommunityResponse> for Oper<AddModToCommunity> {
-  fn perform(&self, conn: &PgConnection) -> Result<AddModToCommunityResponse, Error> {
+  fn perform(
+    &self, 
+    conn: &PgConnection,
+    settings: &Settings,
+  ) -> Result<AddModToCommunityResponse, Error> {
     let data: &AddModToCommunity = &self.data;
 
-    let claims = match Claims::decode(&data.auth) {
+    let claims = match Claims::decode(&data.auth, &settings.jwt_secret) {
       Ok(claims) => claims.claims,
       Err(_e) => return Err(APIError::err("not_logged_in").into()),
     };
@@ -521,10 +553,14 @@ impl Perform<AddModToCommunityResponse> for Oper<AddModToCommunity> {
 }
 
 impl Perform<GetCommunityResponse> for Oper<TransferCommunity> {
-  fn perform(&self, conn: &PgConnection) -> Result<GetCommunityResponse, Error> {
+  fn perform(
+    &self, 
+    conn: &PgConnection,
+    settings: &Settings,
+  ) -> Result<GetCommunityResponse, Error> {
     let data: &TransferCommunity = &self.data;
 
-    let claims = match Claims::decode(&data.auth) {
+    let claims = match Claims::decode(&data.auth, &settings.jwt_secret) {
       Ok(claims) => claims.claims,
       Err(_e) => return Err(APIError::err("not_logged_in").into()),
     };

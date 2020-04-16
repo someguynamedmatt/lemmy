@@ -91,7 +91,7 @@ mod tests {
 
     let page = post.as_page();
     assert_eq!(
-      format!("https://{}/federation/post/62", Settings::get().hostname),
+      format!("https://{}/federation/post/62", "fake_host"),
       page.object_props.id_string().unwrap()
     );
   }
@@ -100,7 +100,7 @@ mod tests {
 pub fn make_apub_endpoint<S: Display, T: Display>(point: S, value: T) -> String {
   format!(
     "https://{}/federation/{}/{}",
-    Settings::get().hostname,
+    "fake_host",
     point,
     value
   )

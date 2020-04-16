@@ -2,10 +2,8 @@ extern crate lemmy_server;
 #[macro_use]
 extern crate diesel_migrations;
 
-use actix::prelude::*;
 use actix_web::*;
-use diesel::r2d2::{ConnectionManager, Pool};
-use diesel::PgConnection;
+use actix::prelude::*;
 use lemmy_server::routes::{api, federation, feeds, index, nodeinfo, webfinger, websocket};
 use lemmy_server::settings::Settings;
 use lemmy_server::websocket::server::*;
@@ -16,21 +14,24 @@ embed_migrations!();
 #[actix_rt::main]
 async fn main() -> io::Result<()> {
   env_logger::init();
-  let settings = Settings::get();
 
-  // Set up the r2d2 connection pool
-  let manager = ConnectionManager::<PgConnection>::new(&settings.get_database_url());
-  let pool = Pool::builder()
-    .max_size(settings.database.pool_size)
-    .build(manager)
-    .unwrap_or_else(|_| panic!("Error connecting to {}", settings.get_database_url()));
+  // Set up the Chatserver's shared state
+  let cs_state_web = web::Data::new(ChatSharedState::init());
+  let cs_state_web_two = cs_state_web.clone();
+  let server = SyncArbiter::start(2, move || ChatServer::init(cs_state_web.clone()));
+
+  let settings = cs_state_web_two.settings.lock().unwrap().to_owned();
 
   // Run the migrations from code
-  let conn = pool.get().unwrap();
+  // let conn = pool.get().unwrap();
+  let conn = cs_state_web_two.pool.lock().unwrap().get().unwrap();
   embedded_migrations::run(&conn).unwrap();
 
+
   // Set up websocket server
-  let server = ChatServer::startup(pool.clone()).start();
+  // let server = ChatServer::init(cs_state).start();
+
+  // let cs_state_web_two = cs_state_web.clone();
 
   println!(
     "Starting http server at {}:{}",
@@ -39,10 +40,11 @@ async fn main() -> io::Result<()> {
 
   // Create Http server with websocket support
   HttpServer::new(move || {
-    let settings = Settings::get();
+    let settings = cs_state_web_two.settings.lock().unwrap().to_owned();
     App::new()
       .wrap(middleware::Logger::default())
-      .data(pool.clone())
+      // .app_data(cs_state_web_two.clone())
+      .app_data(cs_state_web_two.clone())
       .data(server.clone())
       // The routes
       .configure(api::config)
@@ -59,7 +61,7 @@ async fn main() -> io::Result<()> {
       ))
       .service(actix_files::Files::new(
         "/docs",
-        settings.front_end_dir + "/documentation",
+        settings.front_end_dir.to_owned() + "/documentation",
       ))
   })
   .bind((settings.bind, settings.port))?

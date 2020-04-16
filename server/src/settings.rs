@@ -4,7 +4,8 @@ use serde::Deserialize;
 use std::env;
 use std::fs;
 use std::net::IpAddr;
-use std::sync::RwLock;
+use std::sync::Mutex;
+use std::sync::Arc;
 
 static CONFIG_FILE_DEFAULTS: &str = "config/defaults.hjson";
 static CONFIG_FILE: &str = "config/config.hjson";
@@ -60,19 +61,12 @@ pub struct Database {
   pub pool_size: u32,
 }
 
-lazy_static! {
-  static ref SETTINGS: RwLock<Settings> = RwLock::new(match Settings::init() {
-    Ok(c) => c,
-    Err(e) => panic!("{}", e),
-  });
-}
-
 impl Settings {
   /// Reads config from the files and environment.
   /// First, defaults are loaded from CONFIG_FILE_DEFAULTS, then these values can be overwritten
   /// from CONFIG_FILE (optional). Finally, values from the environment (with prefix LEMMY) are
   /// added to the config.
-  fn init() -> Result<Self, ConfigError> {
+  pub fn init() -> Result<Self, ConfigError> {
     let mut s = Config::new();
 
     s.merge(File::with_name(CONFIG_FILE_DEFAULTS))?;
@@ -90,9 +84,9 @@ impl Settings {
   }
 
   /// Returns the config as a struct.
-  pub fn get() -> Self {
-    SETTINGS.read().unwrap().to_owned()
-  }
+  // pub fn get() -> Self {
+  //   SETTINGS.read().unwrap().to_owned()
+  // }
 
   /// Returns the postgres connection url. If LEMMY_DATABASE_URL is set, that is used,
   /// otherwise the connection url is generated from the config.
@@ -120,15 +114,18 @@ impl Settings {
 
   pub fn save_config_file(data: &str) -> Result<String, Error> {
     fs::write(CONFIG_FILE, data)?;
-
-    // Reload the new settings
-    // From https://stackoverflow.com/questions/29654927/how-do-i-assign-a-string-to-a-mutable-static-variable/47181804#47181804
-    let mut new_settings = SETTINGS.write().unwrap();
-    *new_settings = match Settings::init() {
-      Ok(c) => c,
-      Err(e) => panic!("{}", e),
-    };
-
     Self::read_config_file()
   }
+
+  // pub fn live_reload_config(new_settings: Self) -> Result<(), Error> {
+  //   // TODO test that this works now
+  //   // Reload the new settings
+  //   // From https://stackoverflow.com/questions/29654927/how-do-i-assign-a-string-to-a-mutable-static-variable/47181804#47181804
+  //   new_settings = match Settings::init() {
+  //     Ok(c) => c,
+  //     Err(e) => panic!("{}", e),
+  //   };
+
+  //   Ok(())
+  // }
 }

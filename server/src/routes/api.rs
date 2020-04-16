@@ -4,13 +4,12 @@ use crate::api::post::*;
 use crate::api::site::*;
 use crate::api::user::*;
 use crate::api::{Oper, Perform};
+use crate::websocket::server::ChatSharedState;
 use actix_web::{web, HttpResponse};
 use diesel::r2d2::{ConnectionManager, Pool};
 use diesel::PgConnection;
 use failure::Error;
 use serde::Serialize;
-
-type DbParam = web::Data<Pool<ConnectionManager<PgConnection>>>;
 
 #[rustfmt::skip]
 pub fn config(cfg: &mut web::ServiceConfig) {
@@ -66,40 +65,46 @@ pub fn config(cfg: &mut web::ServiceConfig) {
     .route("/api/v1/user/save_user_settings", web::put().to(route_post::<SaveUserSettings, LoginResponse>));
 }
 
-fn perform<Request, Response>(data: Request, db: DbParam) -> Result<HttpResponse, Error>
+fn perform<Request, Response>(
+  data: Request, 
+  state: web::Data<ChatSharedState>,
+) -> Result<HttpResponse, Error>
 where
   Response: Serialize,
   Oper<Request>: Perform<Response>,
 {
-  let conn = match db.get() {
-    Ok(c) => c,
-    Err(e) => return Err(format_err!("{}", e)),
-  };
+  // let conn = match db.get() {
+  //   Ok(c) => c,
+  //   Err(e) => return Err(format_err!("{}", e)),
+  // };
+  let conn = state.pool.lock().unwrap().get()?;
+  let settings = state.settings.lock().unwrap();
+
   let oper: Oper<Request> = Oper::new(data);
-  let response = oper.perform(&conn);
+  let response = oper.perform(&conn, &settings);
   Ok(HttpResponse::Ok().json(response?))
 }
 
 async fn route_get<Data, Response>(
   data: web::Query<Data>,
-  db: DbParam,
+  state: web::Data<ChatSharedState>,
 ) -> Result<HttpResponse, Error>
 where
   Data: Serialize,
   Response: Serialize,
   Oper<Data>: Perform<Response>,
 {
-  perform::<Data, Response>(data.0, db)
+  perform::<Data, Response>(data.0, state)
 }
 
 async fn route_post<Data, Response>(
   data: web::Json<Data>,
-  db: DbParam,
+  state: web::Data<ChatSharedState>,
 ) -> Result<HttpResponse, Error>
 where
   Data: Serialize,
   Response: Serialize,
   Oper<Data>: Perform<Response>,
 {
-  perform::<Data, Response>(data.0, db)
+  perform::<Data, Response>(data.0, state)
 }

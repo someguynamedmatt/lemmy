@@ -1,4 +1,5 @@
 use crate::db::community::Community;
+use crate::websocket::server::ChatSharedState;
 use crate::Settings;
 use actix_web::web;
 use actix_web::web::Query;
@@ -14,21 +15,17 @@ pub struct Params {
   resource: String,
 }
 
-pub fn config(cfg: &mut web::ServiceConfig) {
-  if Settings::get().federation_enabled {
+pub fn config(
+  cfg: &mut web::ServiceConfig,
+) {
+
+  // TODO couldn't get this to pass the app state
+  // if state.settings.lock().unwrap().federation_enabled {
     cfg.route(
       ".well-known/webfinger",
       web::get().to(get_webfinger_response),
     );
-  }
-}
-
-lazy_static! {
-  static ref WEBFINGER_COMMUNITY_REGEX: Regex = Regex::new(&format!(
-    "^group:([a-z0-9_]{{3, 20}})@{}$",
-    Settings::get().hostname
-  ))
-  .unwrap();
+  // }
 }
 
 /// Responds to webfinger requests of the following format. There isn't any real documentation for
@@ -39,10 +36,16 @@ lazy_static! {
 /// https://radical.town/.well-known/webfinger?resource=acct:felix@radical.town
 async fn get_webfinger_response(
   info: Query<Params>,
-  db: web::Data<Pool<ConnectionManager<PgConnection>>>,
+  state: web::Data<ChatSharedState>,
 ) -> Result<HttpResponse, actix_web::Error> {
   let res = web::block(move || {
-    let conn = db.get()?;
+    let conn = state.pool.lock().unwrap().get()?;
+    let hostname = &state.settings.lock().unwrap().hostname;
+    let WEBFINGER_COMMUNITY_REGEX: Regex = Regex::new(&format!(
+        "^group:([a-z0-9_]{{3, 20}})@{}$",
+        hostname
+    ))
+      .unwrap();
 
     let regex_parsed = WEBFINGER_COMMUNITY_REGEX
       .captures(&info.resource)
@@ -63,7 +66,7 @@ async fn get_webfinger_response(
       Err(_) => return Err(format_err!("not_found")),
     };
 
-    let community_url = community.get_url();
+    let community_url = community.get_url(&hostname);
 
     Ok(json!({
     "subject": info.resource,

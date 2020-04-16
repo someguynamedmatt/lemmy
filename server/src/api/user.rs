@@ -205,7 +205,11 @@ pub struct UserJoinResponse {
 }
 
 impl Perform<LoginResponse> for Oper<Login> {
-  fn perform(&self, conn: &PgConnection) -> Result<LoginResponse, Error> {
+  fn perform(
+    &self,
+    conn: &PgConnection, 
+    settings: &Settings,
+  ) -> Result<LoginResponse, Error> {
     let data: &Login = &self.data;
 
     // Fetch that username / email
@@ -221,12 +225,16 @@ impl Perform<LoginResponse> for Oper<Login> {
     }
 
     // Return the jwt
-    Ok(LoginResponse { jwt: user.jwt() })
+    Ok(LoginResponse { jwt: user.jwt(&settings.jwt_secret) })
   }
 }
 
 impl Perform<LoginResponse> for Oper<Register> {
-  fn perform(&self, conn: &PgConnection) -> Result<LoginResponse, Error> {
+  fn perform(
+    &self, 
+    conn: &PgConnection,
+    settings: &Settings,
+  ) -> Result<LoginResponse, Error> {
     let data: &Register = &self.data;
 
     // Make sure site has open registration
@@ -253,7 +261,7 @@ impl Perform<LoginResponse> for Oper<Register> {
     // Register the new user
     let user_form = UserForm {
       name: data.username.to_owned(),
-      fedi_name: Settings::get().hostname,
+      fedi_name: settings.hostname.to_owned(),
       email: data.email.to_owned(),
       matrix_user_id: None,
       avatar: None,
@@ -334,16 +342,20 @@ impl Perform<LoginResponse> for Oper<Register> {
 
     // Return the jwt
     Ok(LoginResponse {
-      jwt: inserted_user.jwt(),
+      jwt: inserted_user.jwt(&settings.jwt_secret),
     })
   }
 }
 
 impl Perform<LoginResponse> for Oper<SaveUserSettings> {
-  fn perform(&self, conn: &PgConnection) -> Result<LoginResponse, Error> {
+  fn perform(
+    &self, 
+    conn: &PgConnection,
+    settings: &Settings,
+  ) -> Result<LoginResponse, Error> {
     let data: &SaveUserSettings = &self.data;
 
-    let claims = match Claims::decode(&data.auth) {
+    let claims = match Claims::decode(&data.auth, &settings.jwt_secret) {
       Ok(claims) => claims.claims,
       Err(_e) => return Err(APIError::err("not_logged_in").into()),
     };
@@ -422,17 +434,21 @@ impl Perform<LoginResponse> for Oper<SaveUserSettings> {
 
     // Return the jwt
     Ok(LoginResponse {
-      jwt: updated_user.jwt(),
+      jwt: updated_user.jwt(&settings.jwt_secret),
     })
   }
 }
 
 impl Perform<GetUserDetailsResponse> for Oper<GetUserDetails> {
-  fn perform(&self, conn: &PgConnection) -> Result<GetUserDetailsResponse, Error> {
+  fn perform(
+    &self, 
+    conn: &PgConnection,
+    settings: &Settings,
+  ) -> Result<GetUserDetailsResponse, Error> {
     let data: &GetUserDetails = &self.data;
 
     let user_claims: Option<Claims> = match &data.auth {
-      Some(auth) => match Claims::decode(&auth) {
+      Some(auth) => match Claims::decode(&auth, &settings.jwt_secret) {
         Ok(claims) => Some(claims.claims),
         Err(_e) => None,
       },
@@ -525,10 +541,14 @@ impl Perform<GetUserDetailsResponse> for Oper<GetUserDetails> {
 }
 
 impl Perform<AddAdminResponse> for Oper<AddAdmin> {
-  fn perform(&self, conn: &PgConnection) -> Result<AddAdminResponse, Error> {
+  fn perform(
+    &self, 
+    conn: &PgConnection,
+    settings: &Settings,
+  ) -> Result<AddAdminResponse, Error> {
     let data: &AddAdmin = &self.data;
 
-    let claims = match Claims::decode(&data.auth) {
+    let claims = match Claims::decode(&data.auth, &settings.jwt_secret) {
       Ok(claims) => claims.claims,
       Err(_e) => return Err(APIError::err("not_logged_in").into()),
     };
@@ -588,10 +608,14 @@ impl Perform<AddAdminResponse> for Oper<AddAdmin> {
 }
 
 impl Perform<BanUserResponse> for Oper<BanUser> {
-  fn perform(&self, conn: &PgConnection) -> Result<BanUserResponse, Error> {
+  fn perform(
+    &self, 
+    conn: &PgConnection,
+    settings: &Settings,
+  ) -> Result<BanUserResponse, Error> {
     let data: &BanUser = &self.data;
 
-    let claims = match Claims::decode(&data.auth) {
+    let claims = match Claims::decode(&data.auth, &settings.jwt_secret) {
       Ok(claims) => claims.claims,
       Err(_e) => return Err(APIError::err("not_logged_in").into()),
     };
@@ -657,10 +681,14 @@ impl Perform<BanUserResponse> for Oper<BanUser> {
 }
 
 impl Perform<GetRepliesResponse> for Oper<GetReplies> {
-  fn perform(&self, conn: &PgConnection) -> Result<GetRepliesResponse, Error> {
+  fn perform(
+    &self, 
+    conn: &PgConnection,
+    settings: &Settings,
+  ) -> Result<GetRepliesResponse, Error> {
     let data: &GetReplies = &self.data;
 
-    let claims = match Claims::decode(&data.auth) {
+    let claims = match Claims::decode(&data.auth, &settings.jwt_secret) {
       Ok(claims) => claims.claims,
       Err(_e) => return Err(APIError::err("not_logged_in").into()),
     };
@@ -681,10 +709,14 @@ impl Perform<GetRepliesResponse> for Oper<GetReplies> {
 }
 
 impl Perform<GetUserMentionsResponse> for Oper<GetUserMentions> {
-  fn perform(&self, conn: &PgConnection) -> Result<GetUserMentionsResponse, Error> {
+  fn perform(
+    &self, 
+    conn: &PgConnection,
+    settings: &Settings,
+  ) -> Result<GetUserMentionsResponse, Error> {
     let data: &GetUserMentions = &self.data;
 
-    let claims = match Claims::decode(&data.auth) {
+    let claims = match Claims::decode(&data.auth, &settings.jwt_secret) {
       Ok(claims) => claims.claims,
       Err(_e) => return Err(APIError::err("not_logged_in").into()),
     };
@@ -705,10 +737,14 @@ impl Perform<GetUserMentionsResponse> for Oper<GetUserMentions> {
 }
 
 impl Perform<UserMentionResponse> for Oper<EditUserMention> {
-  fn perform(&self, conn: &PgConnection) -> Result<UserMentionResponse, Error> {
+  fn perform(
+    &self, 
+    conn: &PgConnection,
+    settings: &Settings,
+  ) -> Result<UserMentionResponse, Error> {
     let data: &EditUserMention = &self.data;
 
-    let claims = match Claims::decode(&data.auth) {
+    let claims = match Claims::decode(&data.auth, &settings.jwt_secret) {
       Ok(claims) => claims.claims,
       Err(_e) => return Err(APIError::err("not_logged_in").into()),
     };
@@ -738,10 +774,14 @@ impl Perform<UserMentionResponse> for Oper<EditUserMention> {
 }
 
 impl Perform<GetRepliesResponse> for Oper<MarkAllAsRead> {
-  fn perform(&self, conn: &PgConnection) -> Result<GetRepliesResponse, Error> {
+  fn perform(
+    &self, 
+    conn: &PgConnection,
+    settings: &Settings,
+  ) -> Result<GetRepliesResponse, Error> {
     let data: &MarkAllAsRead = &self.data;
 
-    let claims = match Claims::decode(&data.auth) {
+    let claims = match Claims::decode(&data.auth, &settings.jwt_secret) {
       Ok(claims) => claims.claims,
       Err(_e) => return Err(APIError::err("not_logged_in").into()),
     };
@@ -822,10 +862,14 @@ impl Perform<GetRepliesResponse> for Oper<MarkAllAsRead> {
 }
 
 impl Perform<LoginResponse> for Oper<DeleteAccount> {
-  fn perform(&self, conn: &PgConnection) -> Result<LoginResponse, Error> {
+  fn perform(
+    &self, 
+    conn: &PgConnection,
+    settings: &Settings,
+  ) -> Result<LoginResponse, Error> {
     let data: &DeleteAccount = &self.data;
 
-    let claims = match Claims::decode(&data.auth) {
+    let claims = match Claims::decode(&data.auth, &settings.jwt_secret) {
       Ok(claims) => claims.claims,
       Err(_e) => return Err(APIError::err("not_logged_in").into()),
     };
@@ -903,7 +947,11 @@ impl Perform<LoginResponse> for Oper<DeleteAccount> {
 }
 
 impl Perform<PasswordResetResponse> for Oper<PasswordReset> {
-  fn perform(&self, conn: &PgConnection) -> Result<PasswordResetResponse, Error> {
+  fn perform(
+    &self, 
+    conn: &PgConnection,
+    settings: &Settings,
+  ) -> Result<PasswordResetResponse, Error> {
     let data: &PasswordReset = &self.data;
 
     // Fetch that email
@@ -922,9 +970,9 @@ impl Perform<PasswordResetResponse> for Oper<PasswordReset> {
     // TODO no i18n support here.
     let user_email = &user.email.expect("email");
     let subject = &format!("Password reset for {}", user.name);
-    let hostname = &format!("https://{}", Settings::get().hostname); //TODO add https for now.
+    let hostname = &format!("https://{}", &settings.hostname); //TODO add https for now.
     let html = &format!("<h1>Password Reset Request for {}</h1><br><a href={}/password_change/{}>Click here to reset your password</a>", user.name, hostname, &token);
-    match send_email(subject, user_email, &user.name, html) {
+    match send_email(subject, user_email, &user.name, html, &settings) {
       Ok(_o) => _o,
       Err(_e) => return Err(APIError::err(&_e).into()),
     };
@@ -934,7 +982,11 @@ impl Perform<PasswordResetResponse> for Oper<PasswordReset> {
 }
 
 impl Perform<LoginResponse> for Oper<PasswordChange> {
-  fn perform(&self, conn: &PgConnection) -> Result<LoginResponse, Error> {
+  fn perform(
+    &self, 
+    conn: &PgConnection,
+    settings: &Settings,
+  ) -> Result<LoginResponse, Error> {
     let data: &PasswordChange = &self.data;
 
     // Fetch the user_id from the token
@@ -953,23 +1005,27 @@ impl Perform<LoginResponse> for Oper<PasswordChange> {
 
     // Return the jwt
     Ok(LoginResponse {
-      jwt: updated_user.jwt(),
+      jwt: updated_user.jwt(&settings.jwt_secret),
     })
   }
 }
 
 impl Perform<PrivateMessageResponse> for Oper<CreatePrivateMessage> {
-  fn perform(&self, conn: &PgConnection) -> Result<PrivateMessageResponse, Error> {
+  fn perform(
+    &self, 
+    conn: &PgConnection,
+    settings: &Settings,
+  ) -> Result<PrivateMessageResponse, Error> {
     let data: &CreatePrivateMessage = &self.data;
 
-    let claims = match Claims::decode(&data.auth) {
+    let claims = match Claims::decode(&data.auth, &settings.jwt_secret) {
       Ok(claims) => claims.claims,
       Err(_e) => return Err(APIError::err("not_logged_in").into()),
     };
 
     let user_id = claims.id;
 
-    let hostname = &format!("https://{}", Settings::get().hostname);
+    let hostname = &format!("https://{}", &settings.hostname);
 
     // Check for a site ban
     if UserView::read(&conn, user_id)?.banned {
@@ -1000,14 +1056,14 @@ impl Perform<PrivateMessageResponse> for Oper<CreatePrivateMessage> {
       if let Some(email) = recipient_user.email {
         let subject = &format!(
           "{} - Private Message from {}",
-          Settings::get().hostname,
+          &settings.hostname,
           claims.username
         );
         let html = &format!(
           "<h1>Private Message</h1><br><div>{} - {}</div><br><a href={}/inbox>inbox</a>",
           claims.username, &content_slurs_removed, hostname
         );
-        match send_email(subject, &email, &recipient_user.name, html) {
+        match send_email(subject, &email, &recipient_user.name, html, &settings) {
           Ok(_o) => _o,
           Err(e) => error!("{}", e),
         };
@@ -1021,10 +1077,14 @@ impl Perform<PrivateMessageResponse> for Oper<CreatePrivateMessage> {
 }
 
 impl Perform<PrivateMessageResponse> for Oper<EditPrivateMessage> {
-  fn perform(&self, conn: &PgConnection) -> Result<PrivateMessageResponse, Error> {
+  fn perform(
+    &self, 
+    conn: &PgConnection,
+    settings: &Settings,
+  ) -> Result<PrivateMessageResponse, Error> {
     let data: &EditPrivateMessage = &self.data;
 
-    let claims = match Claims::decode(&data.auth) {
+    let claims = match Claims::decode(&data.auth, &settings.jwt_secret) {
       Ok(claims) => claims.claims,
       Err(_e) => return Err(APIError::err("not_logged_in").into()),
     };
@@ -1076,10 +1136,14 @@ impl Perform<PrivateMessageResponse> for Oper<EditPrivateMessage> {
 }
 
 impl Perform<PrivateMessagesResponse> for Oper<GetPrivateMessages> {
-  fn perform(&self, conn: &PgConnection) -> Result<PrivateMessagesResponse, Error> {
+  fn perform(
+    &self, 
+    conn: &PgConnection,
+    settings: &Settings,
+  ) -> Result<PrivateMessagesResponse, Error> {
     let data: &GetPrivateMessages = &self.data;
 
-    let claims = match Claims::decode(&data.auth) {
+    let claims = match Claims::decode(&data.auth, &settings.jwt_secret) {
       Ok(claims) => claims.claims,
       Err(_e) => return Err(APIError::err("not_logged_in").into()),
     };
@@ -1097,10 +1161,14 @@ impl Perform<PrivateMessagesResponse> for Oper<GetPrivateMessages> {
 }
 
 impl Perform<UserJoinResponse> for Oper<UserJoin> {
-  fn perform(&self, _conn: &PgConnection) -> Result<UserJoinResponse, Error> {
+  fn perform(
+    &self, 
+    conn: &PgConnection,
+    settings: &Settings,
+  ) -> Result<UserJoinResponse, Error> {
     let data: &UserJoin = &self.data;
 
-    let claims = match Claims::decode(&data.auth) {
+    let claims = match Claims::decode(&data.auth, &settings.jwt_secret) {
       Ok(claims) => claims.claims,
       Err(_e) => return Err(APIError::err("not_logged_in").into()),
     };

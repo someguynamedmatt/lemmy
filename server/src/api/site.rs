@@ -114,7 +114,11 @@ pub struct SaveSiteConfig {
 }
 
 impl Perform<ListCategoriesResponse> for Oper<ListCategories> {
-  fn perform(&self, conn: &PgConnection) -> Result<ListCategoriesResponse, Error> {
+  fn perform(
+    &self, 
+    conn: &PgConnection,
+    settings: &Settings,
+  ) -> Result<ListCategoriesResponse, Error> {
     let _data: &ListCategories = &self.data;
 
     let categories: Vec<Category> = Category::list_all(&conn)?;
@@ -125,7 +129,11 @@ impl Perform<ListCategoriesResponse> for Oper<ListCategories> {
 }
 
 impl Perform<GetModlogResponse> for Oper<GetModlog> {
-  fn perform(&self, conn: &PgConnection) -> Result<GetModlogResponse, Error> {
+  fn perform(
+    &self, 
+    conn: &PgConnection,
+    settings: &Settings,
+  ) -> Result<GetModlogResponse, Error> {
     let data: &GetModlog = &self.data;
 
     let removed_posts = ModRemovePostView::list(
@@ -198,10 +206,14 @@ impl Perform<GetModlogResponse> for Oper<GetModlog> {
 }
 
 impl Perform<SiteResponse> for Oper<CreateSite> {
-  fn perform(&self, conn: &PgConnection) -> Result<SiteResponse, Error> {
+  fn perform(
+    &self, 
+    conn: &PgConnection,
+    settings: &Settings,
+  ) -> Result<SiteResponse, Error> {
     let data: &CreateSite = &self.data;
 
-    let claims = match Claims::decode(&data.auth) {
+    let claims = match Claims::decode(&data.auth, &settings.jwt_secret) {
       Ok(claims) => claims.claims,
       Err(_e) => return Err(APIError::err("not_logged_in").into()),
     };
@@ -245,10 +257,14 @@ impl Perform<SiteResponse> for Oper<CreateSite> {
 }
 
 impl Perform<SiteResponse> for Oper<EditSite> {
-  fn perform(&self, conn: &PgConnection) -> Result<SiteResponse, Error> {
+  fn perform(
+    &self, 
+    conn: &PgConnection,
+    settings: &Settings,
+  ) -> Result<SiteResponse, Error> {
     let data: &EditSite = &self.data;
 
-    let claims = match Claims::decode(&data.auth) {
+    let claims = match Claims::decode(&data.auth, &settings.jwt_secret) {
       Ok(claims) => claims.claims,
       Err(_e) => return Err(APIError::err("not_logged_in").into()),
     };
@@ -294,13 +310,17 @@ impl Perform<SiteResponse> for Oper<EditSite> {
 }
 
 impl Perform<GetSiteResponse> for Oper<GetSite> {
-  fn perform(&self, conn: &PgConnection) -> Result<GetSiteResponse, Error> {
+  fn perform(
+    &self, 
+    conn: &PgConnection,
+    settings: &Settings,
+  ) -> Result<GetSiteResponse, Error> {
     let _data: &GetSite = &self.data;
 
     let site = Site::read(&conn, 1);
     let site_view = if site.is_ok() {
       Some(SiteView::read(&conn)?)
-    } else if let Some(setup) = Settings::get().setup.as_ref() {
+    } else if let Some(setup) = &settings.setup {
       let register = Register {
         username: setup.admin_username.to_owned(),
         email: setup.admin_email.to_owned(),
@@ -309,7 +329,7 @@ impl Perform<GetSiteResponse> for Oper<GetSite> {
         admin: true,
         show_nsfw: true,
       };
-      let login_response = Oper::new(register).perform(&conn)?;
+      let login_response = Oper::new(register).perform(&conn, &settings)?;
       info!("Admin {} created", setup.admin_username);
 
       let create_site = CreateSite {
@@ -320,7 +340,7 @@ impl Perform<GetSiteResponse> for Oper<GetSite> {
         enable_nsfw: false,
         auth: login_response.jwt,
       };
-      Oper::new(create_site).perform(&conn)?;
+      Oper::new(create_site).perform(&conn, &settings)?;
       info!("Site {} created", setup.site_name);
       Some(SiteView::read(&conn)?)
     } else {
@@ -347,11 +367,15 @@ impl Perform<GetSiteResponse> for Oper<GetSite> {
 }
 
 impl Perform<SearchResponse> for Oper<Search> {
-  fn perform(&self, conn: &PgConnection) -> Result<SearchResponse, Error> {
+  fn perform(
+    &self, 
+    conn: &PgConnection,
+    settings: &Settings,
+  ) -> Result<SearchResponse, Error> {
     let data: &Search = &self.data;
 
     let user_id: Option<i32> = match &data.auth {
-      Some(auth) => match Claims::decode(&auth) {
+      Some(auth) => match Claims::decode(&auth, &settings.jwt_secret) {
         Ok(claims) => {
           let user_id = claims.claims.id;
           Some(user_id)
@@ -465,10 +489,14 @@ impl Perform<SearchResponse> for Oper<Search> {
 }
 
 impl Perform<GetSiteResponse> for Oper<TransferSite> {
-  fn perform(&self, conn: &PgConnection) -> Result<GetSiteResponse, Error> {
+  fn perform(
+    &self, 
+    conn: &PgConnection,
+    settings: &Settings,
+  ) -> Result<GetSiteResponse, Error> {
     let data: &TransferSite = &self.data;
 
-    let claims = match Claims::decode(&data.auth) {
+    let claims = match Claims::decode(&data.auth, &settings.jwt_secret) {
       Ok(claims) => claims.claims,
       Err(_e) => return Err(APIError::err("not_logged_in").into()),
     };
@@ -528,10 +556,14 @@ impl Perform<GetSiteResponse> for Oper<TransferSite> {
 }
 
 impl Perform<GetSiteConfigResponse> for Oper<GetSiteConfig> {
-  fn perform(&self, conn: &PgConnection) -> Result<GetSiteConfigResponse, Error> {
+  fn perform(
+    &self, 
+    conn: &PgConnection,
+    settings: &Settings,
+  ) -> Result<GetSiteConfigResponse, Error> {
     let data: &GetSiteConfig = &self.data;
 
-    let claims = match Claims::decode(&data.auth) {
+    let claims = match Claims::decode(&data.auth, &settings.jwt_secret) {
       Ok(claims) => claims.claims,
       Err(_e) => return Err(APIError::err("not_logged_in").into()),
     };
@@ -553,10 +585,14 @@ impl Perform<GetSiteConfigResponse> for Oper<GetSiteConfig> {
 }
 
 impl Perform<GetSiteConfigResponse> for Oper<SaveSiteConfig> {
-  fn perform(&self, conn: &PgConnection) -> Result<GetSiteConfigResponse, Error> {
+  fn perform(
+    &self, 
+    conn: &PgConnection,
+    settings: &Settings,
+  ) -> Result<GetSiteConfigResponse, Error> {
     let data: &SaveSiteConfig = &self.data;
 
-    let claims = match Claims::decode(&data.auth) {
+    let claims = match Claims::decode(&data.auth, &settings.jwt_secret) {
       Ok(claims) => claims.claims,
       Err(_e) => return Err(APIError::err("not_logged_in").into()),
     };
