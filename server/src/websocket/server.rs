@@ -443,37 +443,35 @@ impl Handler<Disconnect> for ChatServer {
   }
 }
 
+// type DeferredStandardMessage = MessageResult<StandardMessage>;
+
 /// Handler for Message message.
 impl Handler<StandardMessage> for ChatServer {
-  type Result = MessageResult<StandardMessage>;
+  // type Result = MessageResult<StandardMessage>;
+  type Result = ResponseActFuture<Self, MessageResult<StandardMessage>>;
 
-  fn handle(&mut self, msg: StandardMessage, ctx: &mut Context<Self>) {
+  fn handle(&mut self, msg: StandardMessage, ctx: &mut Context<Self>) -> Self::Result {
 
-  let my_block = async move {
-    self.db_handle.run(|conn| {
-      parse_json_message(&mut self.clone(), msg.clone(), &conn)
-      // match parse_json_message(self, msg, &conn) {
+    Box::new(async move {
+      self.db_handle.run(|conn| {
+        parse_json_message(self, msg, &conn)
+      });
+    }
+    .into_actor(self).map(|res, actor, ctx| {
+      // match res {
       //   Ok(m) => {
       //     info!("Message Sent: {}", m);
-      //     MessageResult(m)
-      //   }
+      //     MessageResult(m);
+      //       Ok(())
+      //   },
       //   Err(e) => {
       //     error!("Error during message handling {}", e);
-      //     MessageResult(e.to_string())
-      //   }
-      // }
-    }).await
-  };
-
-  let actor_future = my_block
-    .into_actor(self)
-    .map(|res, actor, ctx| { 
-
-
-    });
-
-  ctx.spawn(actor_future);
-
+      //     MessageResult(e.to_string());
+      //       Err(())
+      //   },
+      // Ok(())
+      MessageResult("hi".to_string())
+    }))
   }
 }
 
