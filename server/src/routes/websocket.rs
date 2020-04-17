@@ -100,6 +100,7 @@ impl Handler<WSMessage> for WSSession {
   type Result = ();
 
   fn handle(&mut self, msg: WSMessage, ctx: &mut Self::Context) {
+    info!("Message sent out: {}", msg.0);
     ctx.text(msg.0);
   }
 }
@@ -142,6 +143,8 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WSSession {
             }
             actix::fut::ready(())
           })
+          // Testing out spawn instead of wait
+          // .spawn(ctx);
           .wait(ctx);
       }
       ws::Message::Binary(_bin) => info!("Unexpected binary"),

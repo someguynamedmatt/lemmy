@@ -4,33 +4,28 @@ extern crate diesel_migrations;
 
 use actix::prelude::*;
 use actix_web::*;
-use diesel::r2d2::{ConnectionManager, Pool};
-use diesel::PgConnection;
 use lemmy_server::routes::{api, federation, feeds, index, nodeinfo, webfinger, websocket};
 use lemmy_server::settings::Settings;
 use lemmy_server::websocket::server::*;
+use lemmy_server::db::establish_unpooled_connection;
+use lemmy_server::DbHandle;
 use std::io;
 
 embed_migrations!();
+
 
 #[actix_rt::main]
 async fn main() -> io::Result<()> {
   env_logger::init();
   let settings = Settings::get();
 
-  // Set up the r2d2 connection pool
-  let manager = ConnectionManager::<PgConnection>::new(&settings.get_database_url());
-  let pool = Pool::builder()
-    .max_size(settings.database.pool_size)
-    .build(manager)
-    .unwrap_or_else(|_| panic!("Error connecting to {}", settings.get_database_url()));
+  let db_handle = DbHandle::start(&settings).unwrap();
 
   // Run the migrations from code
-  let conn = pool.get().unwrap();
-  embedded_migrations::run(&conn).unwrap();
+  embedded_migrations::run(&establish_unpooled_connection()).unwrap();
 
   // Set up websocket server
-  let server = ChatServer::startup(pool.clone()).start();
+  let server = ChatServer::startup(db_handle.clone()).start();
 
   println!(
     "Starting http server at {}:{}",
@@ -42,7 +37,7 @@ async fn main() -> io::Result<()> {
     let settings = Settings::get();
     App::new()
       .wrap(middleware::Logger::default())
-      .data(pool.clone())
+      .data(db_handle.clone())
       .data(server.clone())
       // The routes
       .configure(api::config)

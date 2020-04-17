@@ -22,7 +22,7 @@ use crate::api::site::*;
 use crate::api::user::*;
 use crate::api::*;
 use crate::websocket::UserOperation;
-use crate::Settings;
+use crate::{Settings, DbHandle};
 
 type ConnectionId = usize;
 type PostId = i32;
@@ -53,7 +53,7 @@ pub struct Disconnect {
   pub ip: IPAddr,
 }
 
-#[derive(Serialize, Deserialize, Message)]
+#[derive(Serialize, Deserialize, Message, Clone)]
 #[rtype(String)]
 pub struct StandardMessage {
   /// Id of the client session
@@ -82,6 +82,7 @@ pub enum RateLimitType {
 
 /// `ChatServer` manages chat rooms and responsible for coordinating chat
 /// session.
+#[derive(Clone)]
 pub struct ChatServer {
   /// A map from generated random ID to session addr
   sessions: HashMap<ConnectionId, SessionInfo>,
@@ -99,20 +100,18 @@ pub struct ChatServer {
   /// Rate limiting based on rate type and IP addr
   rate_limit_buckets: HashMap<RateLimitType, HashMap<IPAddr, RateLimitBucket>>,
 
-  rng: ThreadRng,
-  db: Pool<ConnectionManager<PgConnection>>,
+  db_handle: DbHandle,
 }
 
 impl ChatServer {
-  pub fn startup(db: Pool<ConnectionManager<PgConnection>>) -> ChatServer {
+  pub fn startup(db_handle: DbHandle) -> ChatServer {
     ChatServer {
       sessions: HashMap::new(),
       rate_limit_buckets: HashMap::new(),
       post_rooms: HashMap::new(),
       community_rooms: HashMap::new(),
       user_rooms: HashMap::new(),
-      rng: rand::thread_rng(),
-      db,
+      db_handle,
     }
   }
 
@@ -387,7 +386,7 @@ impl Handler<Connect> for ChatServer {
 
   fn handle(&mut self, msg: Connect, _ctx: &mut Context<Self>) -> Self::Result {
     // register session with random id
-    let id = self.rng.gen::<usize>();
+    let id = ThreadRng::default().gen::<usize>();
     info!("{} joined", &msg.ip);
 
     self.sessions.insert(
@@ -448,17 +447,33 @@ impl Handler<Disconnect> for ChatServer {
 impl Handler<StandardMessage> for ChatServer {
   type Result = MessageResult<StandardMessage>;
 
-  fn handle(&mut self, msg: StandardMessage, _: &mut Context<Self>) -> Self::Result {
-    match parse_json_message(self, msg) {
-      Ok(m) => {
-        info!("Message Sent: {}", m);
-        MessageResult(m)
-      }
-      Err(e) => {
-        error!("Error during message handling {}", e);
-        MessageResult(e.to_string())
-      }
-    }
+  fn handle(&mut self, msg: StandardMessage, ctx: &mut Context<Self>) {
+
+  let my_block = async move {
+    self.db_handle.run(|conn| {
+      parse_json_message(&mut self.clone(), msg.clone(), &conn)
+      // match parse_json_message(self, msg, &conn) {
+      //   Ok(m) => {
+      //     info!("Message Sent: {}", m);
+      //     MessageResult(m)
+      //   }
+      //   Err(e) => {
+      //     error!("Error during message handling {}", e);
+      //     MessageResult(e.to_string())
+      //   }
+      // }
+    }).await
+  };
+
+  let actor_future = my_block
+    .into_actor(self)
+    .map(|res, actor, ctx| { 
+
+
+    });
+
+  ctx.spawn(actor_future);
+
   }
 }
 
@@ -494,14 +509,13 @@ where
   to_json_string(&op, &res)
 }
 
-fn parse_json_message(chat: &mut ChatServer, msg: StandardMessage) -> Result<String, Error> {
+fn parse_json_message(chat: &mut ChatServer, msg: StandardMessage, conn: &PgConnection) -> Result<String, Error> {
   let json: Value = serde_json::from_str(&msg.msg)?;
   let data = &json["data"].to_string();
   let op = &json["op"].as_str().ok_or(APIError {
     message: "Unknown op type".to_string(),
   })?;
 
-  let conn = chat.db.get()?;
 
   let user_operation: UserOperation = UserOperation::from_str(&op)?;
 

@@ -47,6 +47,13 @@ use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
 use regex::{Regex, RegexBuilder};
 use serde::Deserialize;
+use actix_threadpool::{run, BlockingError};
+use diesel::{
+  r2d2::{ConnectionManager, Pool},
+  PgConnection,
+};
+use failure::Error;
+use std::fmt::Debug;
 
 pub fn to_datetime_utc(ndt: NaiveDateTime) -> DateTime<Utc> {
   DateTime::<Utc>::from_utc(ndt, Utc)
@@ -222,6 +229,39 @@ fn fetch_iframely_and_pictshare_data(
 
 pub fn markdown_to_html(text: &str) -> String {
   comrak::markdown_to_html(text, &comrak::ComrakOptions::default())
+}
+
+#[derive(Clone)]
+pub struct DbHandle(Pool<ConnectionManager<PgConnection>>);
+
+impl DbHandle {
+  /// Start the DbActor with a SyncArbiter.
+  pub fn start(settings: &Settings) -> Result<Self, Error> {
+
+    // Set up the r2d2 connection pool
+    let manager = ConnectionManager::<PgConnection>::new(&settings.get_database_url());
+    let pool = Pool::builder()
+      .max_size(settings.database.pool_size)
+      .build(manager)
+      .unwrap_or_else(|_| panic!("Error connecting to {}", settings.get_database_url()));
+
+      Ok(DbHandle(pool))
+  }
+
+  pub async fn run<F, T, E>(&self, f: F) -> Result<T, BlockingError<E>>
+  where
+      F: FnOnce(&PgConnection) -> Result<T, E> + Send + 'static,
+      T: Send + 'static,
+      E: Debug + From<r2d2::Error> + Send + 'static,
+      {
+        let pool = self.0.clone();
+        run(move || {
+          let conn = pool.get()?;
+
+          (f)(&conn)
+        })
+        .await
+      }
 }
 
 #[cfg(test)]
