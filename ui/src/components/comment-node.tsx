@@ -46,6 +46,7 @@ interface CommentNodeState {
   banReason: string;
   banExpires: string;
   banType: BanType;
+  showDeletionConfirmation: boolean;
   showConfirmTransferSite: boolean;
   showConfirmTransferCommunity: boolean;
   showConfirmAppointAsMod: boolean;
@@ -250,12 +251,41 @@ export class CommentNode extends Component<CommentNodeProps, CommentNodeState> {
                 {this.state.viewSource ? (
                   <pre>{this.commentUnlessRemoved}</pre>
                 ) : (
-                  <div
-                    className="md-div"
-                    dangerouslySetInnerHTML={mdToHtml(
-                      this.commentUnlessRemoved
+                  <>
+                    {this.state.showDeletionConfirmation ? (
+                      <div>
+                        {!node.comment.deleted
+                          ? i18n.t('delete_comment')
+                          : i18n.t('restore_comment')}{' '}
+                        <span
+                          className="pointer"
+                          onClick={linkEvent(
+                            this,
+                            this.confirmDeletionOrRestoration(true)
+                          )}
+                        >
+                          {i18n.t('yes')}
+                        </span>{' '}
+                        /{' '}
+                        <span
+                          className="pointer"
+                          onClick={linkEvent(
+                            this,
+                            this.confirmDeletionOrRestoration(false)
+                          )}
+                        >
+                          {i18n.t('no')}
+                        </span>
+                      </div>
+                    ) : (
+                      <div
+                        className="md-div"
+                        dangerouslySetInnerHTML={mdToHtml(
+                          this.commentUnlessRemoved
+                        )}
+                      />
                     )}
-                  />
+                  </>
                 )}
                 <div class="d-flex justify-content-between justify-content-lg-start flex-wrap text-muted font-weight-bold">
                   {this.props.showContext && this.linkBtn}
@@ -403,7 +433,7 @@ export class CommentNode extends Component<CommentNodeProps, CommentNodeState> {
                                 class="btn btn-link btn-animate text-muted"
                                 onClick={linkEvent(
                                   this,
-                                  this.handleDeleteClick
+                                  this.handleDeletionConfirmation
                                 )}
                                 data-tippy-content={
                                   !node.comment.deleted
@@ -850,13 +880,27 @@ export class CommentNode extends Component<CommentNodeProps, CommentNodeState> {
     i.setState(i.state);
   }
 
-  handleDeleteClick(i: CommentNode) {
-    let deleteForm: DeleteCommentForm = {
-      edit_id: i.props.node.comment.id,
-      deleted: !i.props.node.comment.deleted,
-      auth: null,
+  handleDeletionConfirmation(i: CommentNode) {
+    i.state.showDeletionConfirmation = true;
+    i.setState(i.state);
+  }
+
+  confirmDeletionOrRestoration(confirm: boolean) {
+    return function (i: CommentNode) {
+      if (!confirm) {
+        i.state.showDeletionConfirmation = false;
+        i.setState(i.state);
+        return;
+      }
+
+      let deleteForm: DeleteCommentForm = {
+        edit_id: i.props.node.comment.id,
+        deleted: !i.props.node.comment.deleted,
+        auth: null,
+      };
+      i.state.showDeletionConfirmation = false;
+      WebSocketService.Instance.deleteComment(deleteForm);
     };
-    WebSocketService.Instance.deleteComment(deleteForm);
   }
 
   handleSaveCommentClick(i: CommentNode) {
